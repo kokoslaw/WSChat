@@ -7,7 +7,7 @@ namespace WebSocketTcpServer
 {
     public class ServerService
     {
-       // TODO: obsłuka rozłaczania klientów <== jak będę miał klienta do testowania
+       // TODO: Wysyłanie wiadomości między klientami
 
         public event Action<NamedClient, string> OnMessageReceivedEventChandler;
 
@@ -31,6 +31,8 @@ namespace WebSocketTcpServer
         public void SendMessageToClient(Socket client, string message)
         {
             byte[] buffer = new byte[1024];
+            buffer = Encoding.ASCII.GetBytes(message);
+
             client.BeginSend(buffer, 0, buffer.Length, SocketFlags.None, onMessageSend, client);
         }
 
@@ -81,16 +83,26 @@ namespace WebSocketTcpServer
             NamedClient nClient = (NamedClient)ar.AsyncState;
             Socket client = nClient.Client;
 
-            int bytesReceived = client.EndReceive(ar);
-            byte[] buffer = new byte[bytesReceived];
-            Array.Copy(gBuffer, buffer, bytesReceived);
+            try
+            {
+                int bytesReceived = client.EndReceive(ar);
+                byte[] buffer = new byte[bytesReceived];
+                Array.Copy(gBuffer, buffer, bytesReceived);
 
-            string message = Encoding.ASCII.GetString(buffer);
+                string message = Encoding.ASCII.GetString(buffer);
 
-            if (message.StartsWith("|USER_NAME|"))
-                nClient.Name = message.Remove(0, 11);
-            else
-                OnMessageReceivedEventChandler?.Invoke(nClient, message);
+                if (message.StartsWith("|USER_NAME|"))
+                    nClient.Name = message.Remove(0, 11);
+                else
+                    OnMessageReceivedEventChandler?.Invoke(nClient, message);
+
+                client.BeginReceive(gBuffer, 0, gBuffer.Length, SocketFlags.None, onMessageReceived, connectedClients[nClient.Index]);
+            }
+            catch (SocketException ex)
+            {
+                connectedClients.Remove(nClient.Index);
+                client.Close();
+            }
         }
 
         // Server sends message
