@@ -92,13 +92,47 @@ namespace WebSocketTcpServer
                 string message = Encoding.ASCII.GetString(buffer);
 
                 if (message.StartsWith("|USER_NAME|"))
-                    nClient.Name = message.Remove(0, 11);
-                else
-                    OnMessageReceivedEventChandler?.Invoke(nClient, message);
+                {
+                    nClient.Name = message.Remove(0, 12);
+                    OnMessageReceivedEventChandler?.Invoke(nClient, $"Name changed to: {nClient.Name}");
+                }
+
+                else if (message.StartsWith("/msg "))
+                {
+                    int messageStart = message.IndexOf(":");
+
+                    if(messageStart >= 0)
+                    {
+                        string name = message.Remove(messageStart).Remove(0, 5);
+                        string clientMsg = message.Remove(0, messageStart + 2);
+
+                        var receiver = connectedClients.FirstOrDefault(o => o.Value.Name == name);
+
+                        if (receiver.Value != null)
+                            OnMessageReceivedEventChandler?.Invoke(receiver.Value, clientMsg);
+                        else
+                            OnMessageReceivedEventChandler?.Invoke(nClient, "User not found");
+                    }
+                    else 
+                        OnMessageReceivedEventChandler?.Invoke(nClient, "Unknown command");
+                }
+
+                else if (message.StartsWith("/all"))
+                {
+                    string userList = default;
+
+                    foreach (var user in connectedClients)
+                    {
+                        userList += user.Value.Name + "\n";
+                    }
+                    OnMessageReceivedEventChandler?.Invoke(nClient, userList);
+                }
+
+                else OnMessageReceivedEventChandler?.Invoke(nClient, "Unknown command");
 
                 client.BeginReceive(gBuffer, 0, gBuffer.Length, SocketFlags.None, onMessageReceived, connectedClients[nClient.Index]);
             }
-            catch (SocketException ex)
+            catch (SocketException)
             {
                 connectedClients.Remove(nClient.Index);
                 client.Close();
