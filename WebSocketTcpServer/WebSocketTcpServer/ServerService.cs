@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using System.Diagnostics.CodeAnalysis;
+using System.Net;
 using System.Net.Sockets;
 using System.Text;
 
@@ -9,7 +10,7 @@ namespace WebSocketTcpServer
     {
        // TODO: Wysyłanie wiadomości między klientami
 
-        public event Action<NamedClient, string> OnMessageReceivedEventChandler;
+        public event Action<NamedClient, string>? OnMessageReceivedEventChandler;
 
         public readonly Dictionary<int, NamedClient> connectedClients;
         private readonly Socket server;
@@ -54,6 +55,7 @@ namespace WebSocketTcpServer
             try
             {
                 connectedClients.Add(clientIndex, new NamedClient(newClient, clientIndex, "guest " + clientIndex));
+                Console.WriteLine($"|{connectedClients[clientIndex].Name}| Connected");
             }
             catch (ArgumentException ex)
             {
@@ -80,7 +82,7 @@ namespace WebSocketTcpServer
         // New Message from client
         private void onMessageReceived(IAsyncResult ar)
         {
-            NamedClient nClient = (NamedClient)ar.AsyncState;
+            NamedClient nClient = (NamedClient)ar.AsyncState!;
             Socket client = nClient.Client;
 
             try
@@ -91,49 +93,53 @@ namespace WebSocketTcpServer
 
                 string message = Encoding.ASCII.GetString(buffer);
 
-                if (message.StartsWith("|USER_NAME|"))
-                {
-                    nClient.Name = message.Remove(0, 12);
-                    OnMessageReceivedEventChandler?.Invoke(nClient, $"Name changed to: {nClient.Name}");
-                }
 
-                else if (message.StartsWith("/msg "))
+                switch(message)
                 {
-                    int messageStart = message.IndexOf(":");
+                    case string s when s.StartsWith("/setUser") :
+                        nClient.Name = message.Remove(0, 9);
+                        OnMessageReceivedEventChandler?.Invoke(nClient, $"Name changed to: {nClient.Name}");
+                        break;
 
-                    if(messageStart >= 0)
-                    {
+
+                    case string s when s.StartsWith("/msg "):
+                        int messageStart = message.IndexOf(":");
+
+                        if (messageStart < 0) goto default;
+
                         string name = message.Remove(messageStart).Remove(0, 5);
                         string clientMsg = message.Remove(0, messageStart + 2);
 
                         var receiver = connectedClients.FirstOrDefault(o => o.Value.Name == name);
 
                         if (receiver.Value != null)
-                            OnMessageReceivedEventChandler?.Invoke(receiver.Value, clientMsg);
+                            OnMessageReceivedEventChandler?.Invoke(receiver.Value, $"{nClient.Name}: {clientMsg}");
                         else
                             OnMessageReceivedEventChandler?.Invoke(nClient, "User not found");
-                    }
-                    else 
+                        break;
+
+
+                    case string s when s.StartsWith("/all"):
+                        string userList = "";
+
+                        foreach (var user in connectedClients)
+                        {
+                            userList += user.Value.Name + "\n";
+                        }
+                        OnMessageReceivedEventChandler?.Invoke(nClient, userList);
+                        break;
+
+                    default: 
                         OnMessageReceivedEventChandler?.Invoke(nClient, "Unknown command");
+                        break;
+
                 }
-
-                else if (message.StartsWith("/all"))
-                {
-                    string userList = default;
-
-                    foreach (var user in connectedClients)
-                    {
-                        userList += user.Value.Name + "\n";
-                    }
-                    OnMessageReceivedEventChandler?.Invoke(nClient, userList);
-                }
-
-                else OnMessageReceivedEventChandler?.Invoke(nClient, "Unknown command");
 
                 client.BeginReceive(gBuffer, 0, gBuffer.Length, SocketFlags.None, onMessageReceived, connectedClients[nClient.Index]);
             }
             catch (SocketException)
             {
+                Console.WriteLine($"|{nClient.Name}| Disconnected");
                 connectedClients.Remove(nClient.Index);
                 client.Close();
             }
@@ -142,7 +148,7 @@ namespace WebSocketTcpServer
         // Server sends message
         private void onMessageSend(IAsyncResult ar)
         {
-            Socket client = (Socket)ar.AsyncState;
+            Socket client = (Socket)ar.AsyncState!;
             client.EndSend(ar);
         }
 
