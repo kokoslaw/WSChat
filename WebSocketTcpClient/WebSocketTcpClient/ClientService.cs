@@ -16,7 +16,16 @@ namespace WebSocketTcpClient
 
         public void ConnectTo(IPEndPoint endPoint)
         {
-            client.Connect(endPoint);
+            try
+            {
+                client.Connect(endPoint);
+            }
+            catch (SocketException)
+            {
+                Console.WriteLine("Failed to Connect");
+                return;
+            }
+            
             client.BeginReceive(gBuffer, 0, gBuffer.Length, SocketFlags.None, onMessageReceived, null);
         }
 
@@ -44,6 +53,8 @@ namespace WebSocketTcpClient
 
         public void SendMessageToServer(string message)
         {
+            if(!client.IsBound) return;
+
             byte[] buffer = new byte[1024];
             buffer = Encoding.ASCII.GetBytes(message);
 
